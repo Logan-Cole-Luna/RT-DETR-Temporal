@@ -1,0 +1,32 @@
+task: detection
+num_classes: 1
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVTemporalDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/train.txt
+    seq_len: 5
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 2
+  num_workers: 0
+  drop_last: True
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVTemporalDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/val.txt
+    seq_len: 5
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  batch_size: 2
+  num_workers: 0
+  drop_last: False

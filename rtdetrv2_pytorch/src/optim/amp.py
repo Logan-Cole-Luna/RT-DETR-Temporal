@@ -1,12 +1,12 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
-"""
-
-
+import torch
+import torch.nn as nn 
 import torch.cuda.amp as amp
 
-from ..core import register
+
+from src.core import register
+import src.misc.dist as dist 
 
 
 __all__ = ['GradScaler']
 
-GradScaler = register()(amp.grad_scaler.GradScaler)
+GradScaler = register(amp.grad_scaler.GradScaler)

@@ -1,4 +1,4 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
+"""by lyuwenyu
 """
 
 import math 
@@ -15,7 +15,7 @@ from .utils import deformable_attention_core_func, get_activation, inverse_sigmo
 from .utils import bias_init_with_prob
 
 
-from ...core import register
+from src.core import register
 
 
 __all__ = ['RTDETRTransformer']
@@ -278,7 +278,7 @@ class TransformerDecoder(nn.Module):
         return torch.stack(dec_out_bboxes), torch.stack(dec_out_logits)
 
 
-@register()
+@register
 class RTDETRTransformer(nn.Module):
     __share__ = ['num_classes']
     def __init__(self,
@@ -289,9 +289,9 @@ class RTDETRTransformer(nn.Module):
                  feat_channels=[512, 1024, 2048],
                  feat_strides=[8, 16, 32],
                  num_levels=3,
-                 num_points=4,
+                 num_decoder_points=4,
                  nhead=8,
-                 num_layers=6,
+                 num_decoder_layers=6,
                  dim_feedforward=1024,
                  dropout=0.,
                  activation="relu",
@@ -302,8 +302,7 @@ class RTDETRTransformer(nn.Module):
                  eval_spatial_size=None,
                  eval_idx=-1,
                  eps=1e-2, 
-                 aux_loss=True,
-                 version='v1'):
+                 aux_loss=True):
 
         super(RTDETRTransformer, self).__init__()
         assert position_embed_type in ['sine', 'learned'], \
@@ -320,7 +319,7 @@ class RTDETRTransformer(nn.Module):
         self.num_classes = num_classes
         self.num_queries = num_queries
         self.eps = eps
-        self.num_layers = num_layers
+        self.num_decoder_layers = num_decoder_layers
         self.eval_spatial_size = eval_spatial_size
         self.aux_loss = aux_loss
 
@@ -328,8 +327,8 @@ class RTDETRTransformer(nn.Module):
         self._build_input_proj_layer(feat_channels)
 
         # Transformer module
-        decoder_layer = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, activation, num_levels, num_points)
-        self.decoder = TransformerDecoder(hidden_dim, decoder_layer, num_layers, eval_idx)
+        decoder_layer = TransformerDecoderLayer(hidden_dim, nhead, dim_feedforward, dropout, activation, num_levels, num_decoder_points)
+        self.decoder = TransformerDecoder(hidden_dim, decoder_layer, num_decoder_layers, eval_idx)
 
         self.num_denoising = num_denoising
         self.label_noise_ratio = label_noise_ratio
@@ -338,7 +337,6 @@ class RTDETRTransformer(nn.Module):
         if num_denoising > 0: 
             # self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim, padding_idx=num_classes-1) # TODO for load paddle weights
             self.denoising_class_embed = nn.Embedding(num_classes+1, hidden_dim, padding_idx=num_classes)
-            init.normal_(self.denoising_class_embed.weight[:-1])
 
         # decoder embedding
         self.learnt_init_query = learnt_init_query
@@ -347,28 +345,21 @@ class RTDETRTransformer(nn.Module):
         self.query_pos_head = MLP(4, 2 * hidden_dim, hidden_dim, num_layers=2)
 
         # encoder head
-        if version == 'v1':
-            self.enc_output = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LayerNorm(hidden_dim,)
-            )
-        else:
-            self.enc_output = nn.Sequential(OrderedDict([
-                ('proj', nn.Linear(hidden_dim, hidden_dim)),
-                ('norm', nn.LayerNorm(hidden_dim,)),
-            ]))
-
+        self.enc_output = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim,)
+        )
         self.enc_score_head = nn.Linear(hidden_dim, num_classes)
         self.enc_bbox_head = MLP(hidden_dim, hidden_dim, 4, num_layers=3)
 
         # decoder head
         self.dec_score_head = nn.ModuleList([
             nn.Linear(hidden_dim, num_classes)
-            for _ in range(num_layers)
+            for _ in range(num_decoder_layers)
         ])
         self.dec_bbox_head = nn.ModuleList([
             MLP(hidden_dim, hidden_dim, 4, num_layers=3)
-            for _ in range(num_layers)
+            for _ in range(num_decoder_layers)
         ])
 
         # init encoder output anchors and valid_mask

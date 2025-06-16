@@ -2,21 +2,20 @@
 Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 https://github.com/facebookresearch/detr/blob/main/engine.py
 
-Copyright(c) 2023 lyuwenyu. All Rights Reserved.
+by lyuwenyu
 """
 
-import sys
 import math
+import os
+import sys
+import pathlib
 from typing import Iterable
 
 import torch
 import torch.amp 
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp.grad_scaler import GradScaler
 
-from ..optim import ModelEMA, Warmup
-from ..data import CocoEvaluator
-from ..misc import MetricLogger, SmoothedValue, dist_utils
+from src.data import CocoEvaluator
+from src.misc import (MetricLogger, SmoothedValue, reduce_dict)
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
@@ -26,27 +25,23 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     criterion.train()
     metric_logger = MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    # metric_logger.add_meter('class_error', SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    
     print_freq = kwargs.get('print_freq', 10)
-    writer :SummaryWriter = kwargs.get('writer', None)
+    
+    ema = kwargs.get('ema', None)
+    scaler = kwargs.get('scaler', None)
 
-    ema :ModelEMA = kwargs.get('ema', None)
-    scaler :GradScaler = kwargs.get('scaler', None)
-    lr_warmup_scheduler :Warmup = kwargs.get('lr_warmup_scheduler', None)
-
-    for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        global_step = epoch * len(data_loader) + i
-        metas = dict(epoch=epoch, step=i, global_step=global_step)
 
         if scaler is not None:
             with torch.autocast(device_type=str(device), cache_enabled=True):
-                outputs = model(samples, targets=targets)
+                outputs = model(samples, targets)
             
             with torch.autocast(device_type=str(device), enabled=False):
-                loss_dict = criterion(outputs, targets, **metas)
+                loss_dict = criterion(outputs, targets)
 
             loss = sum(loss_dict.values())
             scaler.scale(loss).backward()
@@ -60,10 +55,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             optimizer.zero_grad()
 
         else:
-            outputs = model(samples, targets=targets)
-            loss_dict = criterion(outputs, targets, **metas)
+            outputs = model(samples, targets)
+            loss_dict = criterion(outputs, targets)
             
-            loss : torch.Tensor = sum(loss_dict.values())
+            loss = sum(loss_dict.values())
             optimizer.zero_grad()
             loss.backward()
             
@@ -76,10 +71,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if ema is not None:
             ema.update(model)
 
-        if lr_warmup_scheduler is not None:
-            lr_warmup_scheduler.step()
-
-        loss_dict_reduced = dist_utils.reduce_dict(loss_dict)
+        loss_dict_reduced = reduce_dict(loss_dict)
         loss_value = sum(loss_dict_reduced.values())
 
         if not math.isfinite(loss_value):
@@ -90,59 +82,95 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(loss=loss_value, **loss_dict_reduced)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
-        if writer and dist_utils.is_main_process():
-            writer.add_scalar('Loss/total', loss_value.item(), global_step)
-            for j, pg in enumerate(optimizer.param_groups):
-                writer.add_scalar(f'Lr/pg_{j}', pg['lr'], global_step)
-            for k, v in loss_dict_reduced.items():
-                writer.add_scalar(f'Loss/{k}', v.item(), global_step)
-                
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
+
 @torch.no_grad()
-def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, data_loader, coco_evaluator: CocoEvaluator, device):
+def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessors, data_loader, base_ds, device, output_dir):
     model.eval()
     criterion.eval()
-    coco_evaluator.cleanup()
-    iou_types = coco_evaluator.iou_types
 
     metric_logger = MetricLogger(delimiter="  ")
+    # metric_logger.add_meter('class_error', SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Test:'
-    
+
+    # iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessors.keys())
+    iou_types = postprocessors.iou_types
+    coco_evaluator = CocoEvaluator(base_ds, iou_types)
+    # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
+
+    panoptic_evaluator = None
+    # if 'panoptic' in postprocessors.keys():
+    #     panoptic_evaluator = PanopticEvaluator(
+    #         data_loader.dataset.ann_file,
+    #         data_loader.dataset.ann_folder,
+    #         output_dir=os.path.join(output_dir, "panoptic_eval"),
+    #     )
+
     for samples, targets in metric_logger.log_every(data_loader, 10, header):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
+        # with torch.autocast(device_type=str(device)):
+        #     outputs = model(samples)
+
         outputs = model(samples)
 
-        # TODO (lyuwenyu), fix dataset converted using `convert_to_coco_api`?
-        orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
-        
-        results = postprocessor(outputs, orig_target_sizes)
+        # loss_dict = criterion(outputs, targets)
+        # weight_dict = criterion.weight_dict
+        # # reduce losses over all GPUs for logging purposes
+        # loss_dict_reduced = reduce_dict(loss_dict)
+        # loss_dict_reduced_scaled = {k: v * weight_dict[k]
+        #                             for k, v in loss_dict_reduced.items() if k in weight_dict}
+        # loss_dict_reduced_unscaled = {f'{k}_unscaled': v
+        #                               for k, v in loss_dict_reduced.items()}
+        # metric_logger.update(loss=sum(loss_dict_reduced_scaled.values()),
+        #                      **loss_dict_reduced_scaled,
+        #                      **loss_dict_reduced_unscaled)
+        # metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
-        # if 'segm' in postprocessor.keys():
+        orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)        
+        results = postprocessors(outputs, orig_target_sizes)
+        # results = postprocessors(outputs, targets)
+
+        # if 'segm' in postprocessors.keys():
         #     target_sizes = torch.stack([t["size"] for t in targets], dim=0)
-        #     results = postprocessor['segm'](results, outputs, orig_target_sizes, target_sizes)
+        #     results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)
 
         res = {target['image_id'].item(): output for target, output in zip(targets, results)}
         if coco_evaluator is not None:
             coco_evaluator.update(res)
+
+        # if panoptic_evaluator is not None:
+        #     res_pano = postprocessors["panoptic"](outputs, target_sizes, orig_target_sizes)
+        #     for i, target in enumerate(targets):
+        #         image_id = target["image_id"].item()
+        #         file_name = f"{image_id:012d}.png"
+        #         res_pano[i]["image_id"] = image_id
+        #         res_pano[i]["file_name"] = file_name
+        #     panoptic_evaluator.update(res_pano)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     if coco_evaluator is not None:
         coco_evaluator.synchronize_between_processes()
+    if panoptic_evaluator is not None:
+        panoptic_evaluator.synchronize_between_processes()
 
     # accumulate predictions from all images
     if coco_evaluator is not None:
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
 
+    # panoptic_res = None
+    # if panoptic_evaluator is not None:
+    #     panoptic_res = panoptic_evaluator.summarize()
+    
     stats = {}
     # stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     if coco_evaluator is not None:
@@ -151,6 +179,11 @@ def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, 
         if 'segm' in iou_types:
             stats['coco_eval_masks'] = coco_evaluator.coco_eval['segm'].stats.tolist()
             
+    # if panoptic_res is not None:
+    #     stats['PQ_all'] = panoptic_res["All"]
+    #     stats['PQ_th'] = panoptic_res["Things"]
+    #     stats['PQ_st'] = panoptic_res["Stuff"]
+
     return stats, coco_evaluator
 
 

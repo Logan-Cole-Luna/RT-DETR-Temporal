@@ -7,18 +7,18 @@ Train/test script examples
 - `--test-only` 
 
 
+Tuning script examples
+- `torchrun --master_port=8844 --nproc_per_node=4 tools/train.py -c configs/rtdetr/rtdetr_r18vd_6x_coco.yml -t https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_5x_coco_objects365_from_paddle.pth` 
+
+
 Export script examples
 - `python tools/export_onnx.py -c path/to/config -r path/to/checkpoint --check`
 
 
-Gpu do not release memory
+GPU do not release memory
 - `ps aux | grep "tools/train.py" | awk '{print $2}' | xargs kill -9`
 
 
 Save all logs
 - Appending `&> train.log 2>&1 &` or `&> train.log 2>&1`
 
-
-Tensorboard
-- `--summary-dir=/path/to/summary/dir` or `-u summary_dir=/path/to/summary/dir`
-- `tensorboard --host=ip --port=8989 --logdir=/path/to/summary/`

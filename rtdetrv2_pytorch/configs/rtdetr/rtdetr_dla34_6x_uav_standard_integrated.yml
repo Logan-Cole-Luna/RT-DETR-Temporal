@@ -1,0 +1,48 @@
+# UAV Standard Detection Configuration
+# Standard RT-DETR for UAV detection (non-temporal)
+
+__include__: [include/rtdetr_dla34.yml, include/dataloader.yml, include/optimizer.yml]
+
+task: uav_detection
+output_dir: ./output/uav_standard_rtdetr_dla34_integrated
+
+epochs: 30
+num_classes: 1
+
+# Dataset configuration for UAV single frames (using temporal dataset with seq_len=1)
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVTemporalMotionDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/train.txt
+    seq_len: 1  # Single frame for standard detection
+    motion_enabled: False  # No motion calculation
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 8  # Larger batch for single frames
+  num_workers: 4
+  collate_fn: uav_temporal_motion_collate_fn
+  drop_last: True
+
+val_dataloader:
+  type: DataLoader  
+  dataset:
+    type: UAVTemporalMotionDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/val.txt
+    seq_len: 1  # Single frame for standard detection
+    motion_enabled: False  # No motion calculation
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  collate_fn: uav_temporal_motion_collate_fn
+  drop_last: False
+
+# The model, criterion, and postprocessor are inherited from include/rtdetr_dla34.yml
+# No changes needed for standard RT-DETR architecture

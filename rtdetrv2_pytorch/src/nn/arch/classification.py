@@ -1,18 +1,14 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
-"""
-
-
 import torch 
-import torch.nn as nn
+import torch.nn as nn 
 
-from ...core import register
+from src.core import register
 
 
 __all__ = ['Classification', 'ClassHead']
 
 
-@register()
-class Classification(torch.nn.Module):
+@register
+class Classification(nn.Module):
     __inject__ = ['backbone', 'head']
 
     def __init__(self, backbone: nn.Module, head: nn.Module=None):
@@ -30,7 +26,7 @@ class Classification(torch.nn.Module):
         return x 
 
 
-@register()
+@register
 class ClassHead(nn.Module):
     def __init__(self, hidden_dim, num_classes):
         super().__init__()

@@ -1,14 +1,14 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
-"""
+'''by lyuwenyu
+'''
 import torch
 import torch.nn as nn 
 import torch.nn.functional as F 
 
 from collections import OrderedDict
 
-from .common import get_activation, FrozenBatchNorm2d
+from .common import get_activation, ConvNormLayer, FrozenBatchNorm2d
 
-from ...core import register
+from src.core import register
 
 
 __all__ = ['PResNet']
@@ -29,23 +29,6 @@ donwload_url = {
     50: 'https://github.com/lyuwenyu/storage/releases/download/v0.1/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth',
     101: 'https://github.com/lyuwenyu/storage/releases/download/v0.1/ResNet101_vd_ssld_pretrained_from_paddle.pth',
 }
-
-
-class ConvNormLayer(nn.Module):
-    def __init__(self, ch_in, ch_out, kernel_size, stride, padding=None, bias=False, act=None):
-        super().__init__()
-        self.conv = nn.Conv2d(
-            ch_in, 
-            ch_out, 
-            kernel_size, 
-            stride, 
-            padding=(kernel_size-1)//2 if padding is None else padding, 
-            bias=bias)
-        self.norm = nn.BatchNorm2d(ch_out)
-        self.act = get_activation(act) 
-
-    def forward(self, x):
-        return self.act(self.norm(self.conv(x)))
 
 
 class BasicBlock(nn.Module):
@@ -155,7 +138,7 @@ class Blocks(nn.Module):
         return out
 
 
-@register()
+@register
 class PResNet(nn.Module):
     def __init__(
         self, 
@@ -181,7 +164,7 @@ class PResNet(nn.Module):
             conv_def = [[3, ch_in, 7, 2, "conv1_1"]]
 
         self.conv1 = nn.Sequential(OrderedDict([
-            (name, ConvNormLayer(cin, cout, k, s, act=act)) for cin, cout, k, s, name in conv_def
+            (_name, ConvNormLayer(c_in, c_out, k, s, act=act)) for c_in, c_out, k, s, _name in conv_def
         ]))
 
         ch_out_list = [64, 128, 256, 512]
@@ -211,13 +194,10 @@ class PResNet(nn.Module):
             self._freeze_norm(self)
 
         if pretrained:
-            if isinstance(pretrained, bool) or 'http' in pretrained:
-                state = torch.hub.load_state_dict_from_url(donwload_url[depth], map_location='cpu')
-            else:
-                state = torch.load(pretrained, map_location='cpu')
+            state = torch.hub.load_state_dict_from_url(donwload_url[depth])
             self.load_state_dict(state)
             print(f'Load PResNet{depth} state_dict')
-
+            
     def _freeze_parameters(self, m: nn.Module):
         for p in m.parameters():
             p.requires_grad = False

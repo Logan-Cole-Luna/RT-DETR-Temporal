@@ -1,0 +1,37 @@
+# UAV Temporal Motion Detection Dataset Configuration
+task: detection
+num_classes: 1
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVTemporalMotionDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/train.txt
+    seq_len: 5
+    motion_enabled: True
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 2  # Smaller batch size due to temporal sequences
+  num_workers: 0
+  collate_fn: uav_temporal_motion_collate_fn
+  drop_last: True
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVTemporalMotionDataset
+    img_folder: c:/data/processed_anti_uav_v2/images
+    seq_file: c:/data/processed_anti_uav_v2/sequences/val.txt
+    seq_len: 5
+    motion_enabled: True
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  batch_size: 2  # Smaller batch size due to temporal sequences
+  num_workers: 0
+  collate_fn: uav_temporal_motion_collate_fn
+  drop_last: False

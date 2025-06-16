@@ -2,24 +2,25 @@
 reference: 
 https://github.com/facebookresearch/detr/blob/main/models/detr.py
 
-Copyright(c) 2023 lyuwenyu. All Rights Reserved.
+by lyuwenyu
 """
 
 
 import torch 
 import torch.nn as nn 
-import torch.distributed
 import torch.nn.functional as F 
 import torchvision
 
+# from torchvision.ops import box_convert, generalized_box_iou
 from .box_ops import box_cxcywh_to_xyxy, box_iou, generalized_box_iou
-from ...misc.dist_utils import get_world_size, is_dist_available_and_initialized
-from ...core import register
+
+from src.misc.dist import get_world_size, is_dist_available_and_initialized
+from src.core import register
 
 
 
-@register()
-class RTDETRCriterion(nn.Module):
+@register
+class SetCriterion(nn.Module):
     """ This class computes the loss for DETR.
     The process happens in two steps:
         1) we compute hungarian assignment between ground truth boxes and the outputs of the model
@@ -72,6 +73,19 @@ class RTDETRCriterion(nn.Module):
             losses['class_error'] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
         return losses
 
+    def loss_labels_bce(self, outputs, targets, indices, num_boxes, log=True):
+        src_logits = outputs['pred_logits']
+        idx = self._get_src_permutation_idx(indices)
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+        target_classes = torch.full(src_logits.shape[:2], self.num_classes,
+                                    dtype=torch.int64, device=src_logits.device)
+        target_classes[idx] = target_classes_o
+
+        target = F.one_hot(target_classes, num_classes=self.num_classes + 1)[..., :-1]
+        loss = F.binary_cross_entropy_with_logits(src_logits, target * 1., reduction='none')
+        loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
+        return {'loss_bce': loss}
+
     def loss_labels_focal(self, outputs, targets, indices, num_boxes, log=True):
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
@@ -83,6 +97,12 @@ class RTDETRCriterion(nn.Module):
         target_classes[idx] = target_classes_o
 
         target = F.one_hot(target_classes, num_classes=self.num_classes+1)[..., :-1]
+        # ce_loss = F.binary_cross_entropy_with_logits(src_logits, target * 1., reduction="none")
+        # prob = F.sigmoid(src_logits) # TODO .detach()
+        # p_t = prob * target + (1 - prob) * (1 - target)
+        # alpha_t = self.alpha * target + (1 - self.alpha) * (1 - target)
+        # loss = alpha_t * ce_loss * ((1 - p_t) ** self.gamma)
+        # loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         loss = torchvision.ops.sigmoid_focal_loss(src_logits, target, self.alpha, self.gamma, reduction='none')
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
 
@@ -144,9 +164,39 @@ class RTDETRCriterion(nn.Module):
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
         losses['loss_bbox'] = loss_bbox.sum() / num_boxes
 
-        loss_giou = 1 - torch.diag(generalized_box_iou(\
-            box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes)))
+        loss_giou = 1 - torch.diag(generalized_box_iou(
+                box_cxcywh_to_xyxy(src_boxes),
+                box_cxcywh_to_xyxy(target_boxes)))
         losses['loss_giou'] = loss_giou.sum() / num_boxes
+        return losses
+
+    def loss_masks(self, outputs, targets, indices, num_boxes):
+        """Compute the losses related to the masks: the focal loss and the dice loss.
+           targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
+        """
+        assert "pred_masks" in outputs
+
+        src_idx = self._get_src_permutation_idx(indices)
+        tgt_idx = self._get_tgt_permutation_idx(indices)
+        src_masks = outputs["pred_masks"]
+        src_masks = src_masks[src_idx]
+        masks = [t["masks"] for t in targets]
+        # TODO use valid to mask invalid areas due to padding in loss
+        target_masks, valid = nested_tensor_from_tensor_list(masks).decompose()
+        target_masks = target_masks.to(src_masks)
+        target_masks = target_masks[tgt_idx]
+
+        # upsample predictions to the target size
+        src_masks = interpolate(src_masks[:, None], size=target_masks.shape[-2:],
+                                mode="bilinear", align_corners=False)
+        src_masks = src_masks[:, 0].flatten(1)
+
+        target_masks = target_masks.flatten(1)
+        target_masks = target_masks.view(src_masks.shape)
+        losses = {
+            "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
+            "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
+        }
         return losses
 
     def _get_src_permutation_idx(self, indices):
@@ -164,15 +214,18 @@ class RTDETRCriterion(nn.Module):
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
         loss_map = {
             'labels': self.loss_labels,
-            'boxes': self.loss_boxes,
             'cardinality': self.loss_cardinality,
+            'boxes': self.loss_boxes,
+            'masks': self.loss_masks,
+
+            'bce': self.loss_labels_bce,
             'focal': self.loss_labels_focal,
             'vfl': self.loss_labels_vfl,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
-    def forward(self, outputs, targets, **kwargs):
+    def forward(self, outputs, targets):
         """ This performs the loss computation.
         Parameters:
              outputs: dict of tensors, see the output specification of the model for the format
@@ -181,15 +234,15 @@ class RTDETRCriterion(nn.Module):
         """
         outputs_without_aux = {k: v for k, v in outputs.items() if 'aux' not in k}
 
+        # Retrieve the matching between the outputs of the last layer and the targets
+        indices = self.matcher(outputs_without_aux, targets)
+
         # Compute the average number of target boxes accross all nodes, for normalization purposes
         num_boxes = sum(len(t["labels"]) for t in targets)
         num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
         if is_dist_available_and_initialized():
             torch.distributed.all_reduce(num_boxes)
         num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
-        
-        # Retrieve the matching between the outputs of the last layer and the targets
-        indices = self.matcher(outputs_without_aux, targets)['indices']
 
         # Compute all the requested losses
         losses = {}
@@ -201,7 +254,7 @@ class RTDETRCriterion(nn.Module):
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
-                indices = self.matcher(aux_outputs, targets)['indices']
+                indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
                     if loss == 'masks':
                         # Intermediate masks losses are too costly to compute, we ignore them.
@@ -220,14 +273,20 @@ class RTDETRCriterion(nn.Module):
         if 'dn_aux_outputs' in outputs:
             assert 'dn_meta' in outputs, ''
             indices = self.get_cdn_matched_indices(outputs['dn_meta'], targets)
-            dn_num_boxes = num_boxes * outputs['dn_meta']['dn_num_group']
+            num_boxes = num_boxes * outputs['dn_meta']['dn_num_group']
+
             for i, aux_outputs in enumerate(outputs['dn_aux_outputs']):
+                # indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
                     if loss == 'masks':
                         # Intermediate masks losses are too costly to compute, we ignore them.
                         continue
+                    kwargs = {}
+                    if loss == 'labels':
+                        # Logging is enabled only for the last layer
+                        kwargs = {'log': False}
 
-                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, dn_num_boxes, **kwargs)
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
                     l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
                     l_dict = {k + f'_dn_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
@@ -236,8 +295,8 @@ class RTDETRCriterion(nn.Module):
 
     @staticmethod
     def get_cdn_matched_indices(dn_meta, targets):
-        """get_cdn_matched_indices
-        """
+        '''get_cdn_matched_indices
+        '''
         dn_positive_idx, dn_num_group = dn_meta["dn_positive_idx"], dn_meta["dn_num_group"]
         num_gts = [len(t['labels']) for t in targets]
         device = targets[0]['labels'].device

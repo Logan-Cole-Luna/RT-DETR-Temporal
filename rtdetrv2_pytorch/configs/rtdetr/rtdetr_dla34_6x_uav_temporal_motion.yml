@@ -1,0 +1,67 @@
+# UAV Temporal RT-DETR with Motion Strength Configuration
+# Enhanced model that processes 4 channels (RGB + Motion)
+
+__include__: [include/rtdetr_dla34.yml, include/dataloader.yml, include/optimizer.yml, ../dataset/uav_temporal_motion_detection.yml]
+
+output_dir: ./output/uav_temporal_motion_rtdetr_dla34
+
+# Training parameters
+epochs: 50
+num_classes: 1
+
+# Enhanced model with motion processing
+model: TemporalRTDETR
+criterion: SetCriterion
+postprocessor: RTDETRPostProcessor
+
+# Temporal RT-DETR configuration
+TemporalRTDETR:
+  backbone: DLANet
+  encoder: HybridEncoder  
+  decoder: RTDETRTransformer
+  motion_module: MotionStrengthModule
+  use_motion: True
+
+# Motion Strength Module configuration
+MotionStrengthModule:
+  t_window: 3
+  in_channels: 3
+
+# DLA backbone (will be modified to accept 4 channels)
+DLANet:
+  dla: dla34
+  pretrained: False  # Start from scratch due to channel modification
+  return_idx: [1, 2, 3]
+
+# Fixed spatial dimensions for UAV images (512x640)
+HybridEncoder:
+  in_channels: [128, 256, 512]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [2]
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  pe_temperature: 10000
+  expansion: 1.0
+  depth_mult: 1
+  act: 'silu'
+  # Fix spatial size for UAV images
+  eval_spatial_size: [512, 640]
+
+RTDETRTransformer:
+  feat_channels: [256, 256, 256]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  num_levels: 3
+  num_queries: 300
+  num_decoder_layers: 6
+  num_denoising: 100
+  eval_idx: -1
+  # Fix spatial size for UAV images  
+  eval_spatial_size: [512, 640]
+
+# Fixed input size for temporal sequences
+multi_scale: [512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512]

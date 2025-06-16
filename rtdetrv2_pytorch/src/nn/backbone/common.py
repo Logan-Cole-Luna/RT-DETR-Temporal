@@ -1,8 +1,26 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
-"""
+'''by lyuwenyu
+'''
 
 import torch 
 import torch.nn as nn
+
+
+
+class ConvNormLayer(nn.Module):
+    def __init__(self, ch_in, ch_out, kernel_size, stride, padding=None, bias=False, act=None):
+        super().__init__()
+        self.conv = nn.Conv2d(
+            ch_in, 
+            ch_out, 
+            kernel_size, 
+            stride, 
+            padding=(kernel_size-1)//2 if padding is None else padding, 
+            bias=bias)
+        self.norm = nn.BatchNorm2d(ch_out)
+        self.act = nn.Identity() if act is None else get_activation(act) 
+
+    def forward(self, x):
+        return self.act(self.norm(self.conv(x)))
 
 
 class FrozenBatchNorm2d(nn.Module):
@@ -48,29 +66,13 @@ class FrozenBatchNorm2d(nn.Module):
             "{num_features}, eps={eps}".format(**self.__dict__)
         )
 
-def freeze_batch_norm2d(module: nn.Module) -> nn.Module:
-    if isinstance(module, nn.BatchNorm2d):
-        module = FrozenBatchNorm2d(module.num_features)
-    else:
-        for name, child in module.named_children():
-            _child = freeze_batch_norm2d(child)
-            if _child is not child:
-                setattr(module, name, _child)
-    return module
 
-
-def get_activation(act: str, inplace: bool=True):
-    """get activation
-    """
-    if act is None:
-        return nn.Identity()
-
-    elif isinstance(act, nn.Module):
-        return act 
-
+def get_activation(act: str, inpace: bool=True):
+    '''get activation
+    '''
     act = act.lower()
     
-    if act == 'silu' or act == 'swish':
+    if act == 'silu':
         m = nn.SiLU()
 
     elif act == 'relu':
@@ -84,14 +86,17 @@ def get_activation(act: str, inplace: bool=True):
     
     elif act == 'gelu':
         m = nn.GELU()
-
-    elif act == 'hardsigmoid':
-        m = nn.Hardsigmoid()
+        
+    elif act is None:
+        m = nn.Identity()
+    
+    elif isinstance(act, nn.Module):
+        m = act
 
     else:
         raise RuntimeError('')  
 
     if hasattr(m, 'inplace'):
-        m.inplace = inplace
+        m.inplace = inpace
     
     return m 

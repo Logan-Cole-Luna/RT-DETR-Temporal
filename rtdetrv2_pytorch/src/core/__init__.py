@@ -1,7 +1,7 @@
-"""Copyright(c) 2023 lyuwenyu. All Rights Reserved.
+"""by lyuwenyu
 """
 
-from .workspace import GLOBAL_CONFIG, register, create
+# from .yaml_utils import register, create, load_config, merge_config, merge_dict
 from .yaml_utils import *
-from ._config import BaseConfig
+from .config import BaseConfig
 from .yaml_config import YAMLConfig

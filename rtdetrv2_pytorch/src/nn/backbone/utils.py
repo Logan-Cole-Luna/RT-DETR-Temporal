@@ -1,7 +1,7 @@
 """
 https://github.com/pytorch/vision/blob/main/torchvision/models/_utils.py
 
-Copyright(c) 2023 lyuwenyu. All Rights Reserved.
+by lyuwenyu
 """
 
 from collections import OrderedDict
@@ -45,10 +45,13 @@ class IntermediateLayerGetter(nn.ModuleDict):
         self.return_layers = orig_return_layers
 
     def forward(self, x):
+        # out = OrderedDict()
         outputs = []
         for name, module in self.items():
             x = module(x)
             if name in self.return_layers:
+                # out_name = self.return_layers[name]
+                # out[out_name] = x
                 outputs.append(x)
         
         return outputs

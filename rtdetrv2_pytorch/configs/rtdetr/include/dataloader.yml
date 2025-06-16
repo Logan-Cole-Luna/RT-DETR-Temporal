@@ -1,3 +1,5 @@
+# num_classes: 91
+# remap_mscoco_category: True
 
 train_dataloader: 
   dataset: 
@@ -7,25 +9,31 @@ train_dataloader:
         - {type: RandomPhotometricDistort, p: 0.5}
         - {type: RandomZoomOut, fill: 0}
         - {type: RandomIoUCrop, p: 0.8}
-        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: SanitizeBoundingBox, min_size: 1}
         - {type: RandomHorizontalFlip}
         - {type: Resize, size: [640, 640], }
-        - {type: SanitizeBoundingBoxes, min_size: 1}
-        - {type: ConvertPILImage, dtype: 'float32', scale: True}   
-        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}  
-  collate_fn:
-    type: BatchImageCollateFuncion
-    scales: [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800]
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
+        - {type: ToImageTensor}
+        - {type: ConvertDtype}
+        - {type: SanitizeBoundingBox, min_size: 1}
+        - {type: ConvertBox, out_fmt: 'cxcywh', normalize: True}
   shuffle: True
+  batch_size: 4
   num_workers: 4
-  total_batch_size: 16
+  collate_fn: default_collate_fn
+
 
 val_dataloader:
   dataset: 
     transforms:
       ops: 
+        # - {type: Resize, size: 639, max_size: 640}
+        # - {type: PadToSize, spatial_size: 640}
         - {type: Resize, size: [640, 640]}
-        - {type: ConvertPILImage, dtype: 'float32', scale: True}   
+        - {type: ToImageTensor}
+        - {type: ConvertDtype}
   shuffle: False
-  total_batch_size: 16
-  num_workers: 8
+  batch_size: 8
+  num_workers: 4
+  collate_fn: default_collate_fn

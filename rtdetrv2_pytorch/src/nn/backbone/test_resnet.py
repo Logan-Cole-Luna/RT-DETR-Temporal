@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 
-from ...core import register
+from src.core import register
 
 
 class BasicBlock(nn.Module):
@@ -70,7 +70,7 @@ class _ResNet(nn.Module):
         return out
         
 
-@register()
+@register
 class MResNet(nn.Module):
     def __init__(self, num_classes=10, num_blocks=[2, 2, 2, 2]) -> None:
         super().__init__()
