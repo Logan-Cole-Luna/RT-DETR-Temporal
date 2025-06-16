@@ -1,0 +1,2 @@
+rtdetrv2_pytorch/output/uav_temporal_training_v2_train/epoch_60_temporal_model.pth filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text

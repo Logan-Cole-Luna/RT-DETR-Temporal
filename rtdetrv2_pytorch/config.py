@@ -8,7 +8,7 @@ from typing import Optional
 MODEL_IS_TEMPORAL: bool = True 
 
 # ===== TRAINING CONFIGURATION =====
-NUM_EPOCHS: int = 50
+NUM_EPOCHS: int = 100
 BATCH_SIZE: int = 16
 LEARNING_RATE: float = 1e-3
 WEIGHT_DECAY: float = 1e-4

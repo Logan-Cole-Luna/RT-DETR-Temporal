@@ -32,6 +32,7 @@ class ScriptConfig:
     OUTPUT_VIDEO = Path("./output/v2_temporal_output.mp4")
     CHECKPOINT_PATH = Path("./output/uav_temporal_motion_training/best_temporal_model.pth")
     CHECKPOINT_PATH = Path("output/uav_temporal_motion_training_v2/epoch_24_temporal_model.pth")
+    CHECKPOINT_PATH = Path("output/uav_temporal_training_v2_train/epoch_60_temporal_model.pth")
     CONFIG_PATH = Path('./configs/rtdetr/rtdetr_dla34_6x_uav_temporal_fixed.yml')
     
     SEQ_LEN = DEFAULT_SEQ_LEN

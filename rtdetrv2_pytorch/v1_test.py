@@ -235,6 +235,7 @@ def main():
     checkpoint_path = "./output/uav_temporal_motion_training/best_temporal_model.pth"
     checkpoint_path = r"output/uav_temporal_training_v2_train/epoch_40_temporal_model.pth"
     checkpoint_path = "output/uav_temporal_training_v2_train/epoch_40_temporal_model.pth"
+    checkpoint_path = "output/uav_temporal_training_v2_train/epoch_60_temporal_model.pth"
     model = load_trained_temporal_model(checkpoint_path)
     
     if model is None:
