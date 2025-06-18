@@ -10,9 +10,9 @@ MODEL_IS_TEMPORAL: bool = True
 # ===== TRAINING CONFIGURATION =====
 NUM_EPOCHS: int = 100
 BATCH_SIZE: int = 16
-LEARNING_RATE: float = 1e-3
+LEARNING_RATE: float = 1e-4  # Further reduced for v4 stability  
 WEIGHT_DECAY: float = 1e-4
-GRAD_CLIP_MAX_NORM: float = 1.0
+GRAD_CLIP_MAX_NORM: float = 0.1  # Reduced from 1.0 for better gradient control
 # EARLY_STOPPING_PATIENCE: int = 5 # Optional: Patience for early stopping
 
 # ===== DATASET CONFIGURATION =====
@@ -25,8 +25,8 @@ BASE_TEMPORAL_SEQ_LEN: int = 5
 MOTION_CALC_IN_CHANNELS: int = 3
 
 # ===== DATASET SUBSET PERCENTAGES =====
-TRAIN_SUBSET_PERCENTAGE: Optional[float] = 1.0
-VAL_SUBSET_PERCENTAGE: Optional[float] = 1.0
+TRAIN_SUBSET_PERCENTAGE: Optional[float] = 0.2  # Start with smaller subset for debugging
+VAL_SUBSET_PERCENTAGE: Optional[float] = 0.2    # Start with smaller subset for debugging
 
 # ===== DATALOADER CONFIGURATION =====
 NUM_WORKERS: int = 4
@@ -45,12 +45,15 @@ NON_TEMPORAL_CONFIG_BASENAME: str = "rtdetr_dla34_6x_coco.yml"
 
 # ===== OUTPUT DIRECTORY =====
 # This is a format string, {model_type_str} will be replaced in the main script.
-OUTPUT_DIR_FORMAT_STRING: str = "./output/uav_{model_type_str}_training_v2_train"
+OUTPUT_DIR_FORMAT_STRING: str = "./output/uav_{model_type_str}_training_v4_train"
+
+# ===== VALIDATION CONFIGURATION =====
+VALIDATION_PERCENTAGE: float = 0.2  # Run validation every 20% of epochs
 
 # ===== RESUME TRAINING CONFIGURATION =====
 # Path to a .pth checkpoint file to resume training from. Set to None to disable.
 # Example: "./output/uav_temporal_training_v2_train/best_temporal_model.pth"
-RESUME_CHECKPOINT_PATH: Optional[str] = "output/uav_temporal_training_v2_train/epoch_40_temporal_model.pth"
+RESUME_CHECKPOINT_PATH: Optional[str] = "output/uav_temporal_training_v4_train/epoch_9_temporal_model.pth"
 
 # ===== LOGGING CONFIGURATION =====
 LOG_BATCH_UPDATE_INTERVAL: int = 50  # Increased interval to reduce terminal flooding
