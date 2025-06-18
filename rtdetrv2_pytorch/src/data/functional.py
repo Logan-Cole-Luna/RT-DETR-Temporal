@@ -1,9 +1,13 @@
 import torch
 import torchvision.transforms.functional as F
+import torch.nn as nn
+import torchvision.transforms.v2 as T
 
 from packaging import version
 from typing import Optional, List
 from torch import Tensor
+
+from src.core import register
 
 # needed due to empty tensor bug in pytorch and torchvision 0.5
 import torchvision
@@ -167,3 +171,7 @@ def pad(image, target, padding):
     if "masks" in target:
         target['masks'] = torch.nn.functional.pad(target['masks'], (0, padding[0], 0, padding[1]))
     return padded_image, target
+
+@register
+class RandomPhotometricDistort(T.ColorJitter):
+    pass

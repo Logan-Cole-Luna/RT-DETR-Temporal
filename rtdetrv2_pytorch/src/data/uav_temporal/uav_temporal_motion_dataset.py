@@ -7,11 +7,11 @@ import os
 import json
 import torch
 import torch.nn.functional as F
-import cv2
-import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset
 from typing import List, Dict, Any, Tuple, Optional
+from torchvision.io import read_image
+from torchvision.transforms import ToTensor
 
 from src.core import register
 
@@ -20,7 +20,6 @@ from src.core import register
 class UAVTemporalMotionDataset(Dataset):
     """
     Enhanced dataset for loading temporal sequences of UAV frames with motion computation.
-    
     Returns full temporal sequences that can be processed by MotionStrengthModule.
     """
     __inject__ = ['transforms']
@@ -67,12 +66,10 @@ class UAVTemporalMotionDataset(Dataset):
             for line in f:
                 line = line.strip()
                 if line:
-                    # Each line contains space-separated frame names for one sequence
                     frame_names = line.split()
                     if len(frame_names) == self.seq_len:
                         sequences.append(frame_names)
                     elif self.seq_len == 1:
-                        # For non-temporal mode, only take the middle frame of each sequence
                         mid = len(frame_names) // 2
                         sequences.append([frame_names[mid]])
                     else:
@@ -80,29 +77,26 @@ class UAVTemporalMotionDataset(Dataset):
         
         return sequences
     
-    def _load_image(self, frame_name: str) -> np.ndarray:
-        """Load a single image"""
-        # Handle path resolution
+    def _load_image(self, frame_name: str) -> torch.Tensor:
+        """Load a single image as torch.Tensor [C,H,W]"""
+        # resolve path
         if frame_name.startswith('images/'):
-            relative_path = frame_name[7:]  # Remove 'images/'
-            img_path = self.img_folder / relative_path
+            img_path = self.img_folder / frame_name[7:]
         else:
             img_path = self.img_folder / frame_name
-        
         if not img_path.exists():
             print(f"Warning: Image {img_path} not found")
-            return np.zeros((512, 640, 3), dtype=np.uint8)
-        
-        image = cv2.imread(str(img_path))
-        if image is None:
-            print(f"Warning: Could not load image {img_path}")
-            return np.zeros((512, 640, 3), dtype=np.uint8)
-        
-        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # return zero tensor [3,H,W]
+            return torch.zeros((3, 512, 640), dtype=torch.float32)
+        # use read_image to avoid numpy
+        img_t = read_image(str(img_path)).float() / 255.0  # [C, H, W]
+        # if grayscale or wrong channels, pad or replicate
+        if img_t.size(0) == 1:
+            img_t = img_t.repeat(3, 1, 1)
+        return img_t
     
     def _load_annotation(self, img_name: str) -> Dict[str, Any]:
         """Load annotation for a single frame"""
-        # Extract filename and split info
         if img_name.startswith('images/'):
             filename = img_name.split('/')[-1]
             split_name = img_name.split('/')[1]
@@ -110,7 +104,6 @@ class UAVTemporalMotionDataset(Dataset):
             filename = img_name
             split_name = "test"
         
-        # Construct label path
         label_name = filename.replace('.jpg', '.txt').replace('.png', '.txt')
         label_path = self.img_folder.parent / "labels" / split_name / label_name
         
@@ -120,16 +113,13 @@ class UAVTemporalMotionDataset(Dataset):
         if label_path.exists():
             with open(label_path, 'r') as f:
                 for line in f:
-                    line = line.strip()
-                    if line:
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            class_id = int(parts[0])
-                            cx, cy, w, h = map(float, parts[1:5])
-                            boxes.append([cx, cy, w, h])
-                            labels.append(class_id)
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        class_id = int(parts[0])
+                        cx, cy, w, h = map(float, parts[1:5])
+                        boxes.append([cx, cy, w, h])
+                        labels.append(class_id)
         
-        # Convert to tensors
         if not boxes:
             boxes = torch.zeros((0, 4), dtype=torch.float32)
             labels = torch.zeros((0,), dtype=torch.int64)
@@ -137,57 +127,47 @@ class UAVTemporalMotionDataset(Dataset):
             boxes = torch.tensor(boxes, dtype=torch.float32)
             labels = torch.tensor(labels, dtype=torch.int64)
         
-        return {
-            'boxes': boxes,
-            'labels': labels,
-        }
+        return {'boxes': boxes, 'labels': labels}
 
     def __len__(self) -> int:
         return len(self.sequences)
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """
-        Get a temporal sequence of frames
-        
-        Returns:
-            frames: Tensor of shape [T, C, H, W] - full temporal sequence
-            target: Dict with 'boxes' and 'labels' for the middle frame
-        """
+        # Log data loading
+        #print(f"[UAVTemporalMotionDataset] __getitem__ idx={idx}")
         sequence = self.sequences[idx]
-        
-        # Load all frames in the sequence
+        #print(f"[UAVTemporalMotionDataset] sequence names: {sequence}")
         frames = []
         for frame_name in sequence:
-            image = self._load_image(frame_name)
-            
-            # Convert to tensor and normalize
-            image_tensor = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
-            frames.append(image_tensor)
-        
-        # Stack frames: [T, C, H, W]
-        frames_tensor = torch.stack(frames)
-        
-        # Get annotation for the middle frame (used as target)
+            img_t = self._load_image(frame_name)
+            frames.append(img_t)
+        frames_tensor = torch.stack(frames)  # [T,C,H,W]
         middle_idx = len(sequence) // 2
         target = self._load_annotation(sequence[middle_idx])
-        
-        # Apply transforms if specified (only to middle frame for now)
-        if self._transforms is not None:
-            # Convert middle frame back to PIL for transforms
-            from PIL import Image
-            middle_frame = frames_tensor[middle_idx].permute(1, 2, 0).numpy()
-            middle_frame = (middle_frame * 255).astype(np.uint8)
-            middle_frame_pil = Image.fromarray(middle_frame)
-            
-            # Apply transforms
-            transformed_frame, target = self._transforms(middle_frame_pil, target)
-            
-            # Convert back to tensor if needed
-            if not isinstance(transformed_frame, torch.Tensor):
-                transformed_frame = torch.from_numpy(np.array(transformed_frame)).permute(2, 0, 1).float() / 255.0
-            
-            # Replace middle frame with transformed version
-            frames_tensor[middle_idx] = transformed_frame
+        #print(f"[UAVTemporalMotionDataset] raw target boxes: {target.get('boxes').shape}")
+        # Add image_id for COCO API compatibility
+        target['image_id'] = torch.tensor([idx], dtype=torch.int64)
+
+        if self._transforms:
+            mf = frames_tensor[middle_idx]  # [C,H,W]
+            try:
+                tf_frame, target = self._transforms(mf, target)
+                # Ensure tensor
+                if not isinstance(tf_frame, torch.Tensor):
+                    tf_frame = ToTensor()(tf_frame)
+                # Resize entire sequence to match transformed frame
+                new_h, new_w = tf_frame.shape[1], tf_frame.shape[2]
+                try:
+                    # Attempt to interpolate full temporal sequence
+                    frames_tensor = F.interpolate(frames_tensor, size=(new_h, new_w), mode='bilinear', align_corners=False)
+                    frames_tensor[middle_idx] = tf_frame
+                except ValueError:
+                    # Fallback: when dimensions mismatch, replace with single-frame sequence
+                    frames_tensor = tf_frame.unsqueeze(0)
+            except TypeError as e:
+                print(f"[UAVTemporalMotionDataset] Skipping transforms for idx={idx} due to: {e}")
+        # Log post-transform shapes
+        # print(f"[UAVTemporalMotionDataset] frames_tensor shape: {frames_tensor.shape}, labels: {len(target.get('labels', []))}")
         
         return frames_tensor, target
 
@@ -196,22 +176,7 @@ class UAVTemporalMotionDataset(Dataset):
 def uav_temporal_motion_collate_fn(batch):
     """
     Collate function for temporal motion dataset
-    
-    Args:
-        batch: List of (frames, target) tuples
-        
-    Returns:
-        frames: Tensor [B, T, C, H, W] - batch of temporal sequences
-        targets: List of target dicts (for middle frames)
     """
-    frames_list = []
-    targets = []
-    
-    for frames, target in batch:
-        frames_list.append(frames)  # [T, C, H, W]
-        targets.append(target)
-    
-    # Stack frames: [B, T, C, H, W]
-    frames_batch = torch.stack(frames_list)
-    
-    return frames_batch, targets
+    frames_list, targets = zip(*batch)
+    frames_batch = torch.stack(list(frames_list), dim=0)
+    return frames_batch, list(targets)

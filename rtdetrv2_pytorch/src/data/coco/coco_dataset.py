@@ -11,13 +11,6 @@ import torch.utils.data
 import torchvision
 torchvision.disable_beta_transforms_warning()
 
-# Handle datapoints import for compatibility
-try:
-    from torchvision import datapoints
-except ImportError:
-    # Fallback for newer torchvision versions where datapoints was removed
-    datapoints = None
-
 from pycocotools import mask as coco_mask
 
 from src.core import register
@@ -47,13 +40,10 @@ class CocoDetection(torchvision.datasets.CocoDetection):
 
         # ['boxes', 'masks', 'labels']:
         if 'boxes' in target:
-            target['boxes'] = datapoints.BoundingBox(
-                target['boxes'], 
-                format=datapoints.BoundingBoxFormat.XYXY, 
-                spatial_size=img.size[::-1]) # h w
+            target['boxes'] = target['boxes']
 
         if 'masks' in target:
-            target['masks'] = datapoints.Mask(target['masks'])
+            target['masks'] = target['masks']
 
         if self._transforms is not None:
             img, target = self._transforms(img, target)

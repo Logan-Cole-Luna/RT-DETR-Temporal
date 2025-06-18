@@ -1,0 +1,19 @@
+# RT-DETR ResNet-34 6x schedule on UAV temporal+motion dataset
+__include__:
+  - '../dataset/uav_temporal_motion.yml'
+  - '../runtime.yml'
+  - './include/rtdetr_r50vd.yml'
+  - './include/optimizer.yml'
+
+# Output & training schedule
+output_dir: ./output/uav_temporal_motion_r34vd
+epoches: 30
+log_step: 20
+checkpoint_step: 5
+
+# Backbone override
+PResNet:
+  depth: 34
+  pretrained: True
+HybridEncoder:
+  in_channels: [128, 256, 512]

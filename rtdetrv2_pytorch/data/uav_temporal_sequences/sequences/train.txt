@@ -1,2 +1,0 @@
-seq_000_frame_000.jpg seq_000_frame_001.jpg seq_000_frame_002.jpg seq_000_frame_003.jpg seq_000_frame_004.jpg
-seq_001_frame_000.jpg seq_001_frame_001.jpg seq_001_frame_002.jpg seq_001_frame_003.jpg seq_001_frame_004.jpg
