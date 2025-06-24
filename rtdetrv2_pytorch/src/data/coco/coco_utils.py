@@ -138,19 +138,8 @@ def convert_to_coco_api(ds):
         bboxes[:, 2:] -= bboxes[:, :2]
         bboxes = bboxes.tolist()
         labels = targets["labels"].tolist()
-        # compute object areas if missing
-        if "area" in targets:
-            areas = targets["area"].tolist()
-        else:
-            # derive area from boxes
-            widths = (targets["boxes"][..., 2] - targets["boxes"][..., 0]).tolist()
-            heights = (targets["boxes"][..., 3] - targets["boxes"][..., 1]).tolist()
-            areas = [w * h for w, h in zip(widths, heights)]
-        # default iscrowd to zeros if missing
-        if "iscrowd" in targets:
-            iscrowd = targets["iscrowd"].tolist()
-        else:
-            iscrowd = [0] * len(areas)
+        areas = targets["area"].tolist()
+        iscrowd = targets["iscrowd"].tolist()
         if "masks" in targets:
             masks = targets["masks"]
             # make masks Fortran contiguous for coco_mask

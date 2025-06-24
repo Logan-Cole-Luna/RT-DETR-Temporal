@@ -8,7 +8,7 @@ import datetime
 import torch 
 
 from src.misc import dist
-from src.data.coco.coco_utils import get_coco_api_from_dataset
+from src.data import get_coco_api_from_dataset
 
 from .solver import BaseSolver
 from .det_engine import train_one_epoch, evaluate
@@ -25,10 +25,7 @@ class DetSolver(BaseSolver):
         n_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print('number of params:', n_parameters)
 
-        base_ds = None
-        if 'Coco' in self.cfg.val_dataloader['dataset']['type']:
-            base_ds = get_coco_api_from_dataset(self.val_dataloader.dataset)
-
+        base_ds = get_coco_api_from_dataset(self.val_dataloader.dataset)
         # best_stat = {'coco_eval_bbox': 0, 'coco_eval_masks': 0, 'epoch': -1, }
         best_stat = {'epoch': -1, }
 
@@ -95,9 +92,7 @@ class DetSolver(BaseSolver):
     def val(self, ):
         self.eval()
 
-        base_ds = None
-        if 'Coco' in self.cfg.val_dataloader['dataset']['type']:
-            base_ds = get_coco_api_from_dataset(self.val_dataloader.dataset)
+        base_ds = get_coco_api_from_dataset(self.val_dataloader.dataset)
         
         module = self.ema.module if self.ema else self.model
         test_stats, coco_evaluator = evaluate(module, self.criterion, self.postprocessor,

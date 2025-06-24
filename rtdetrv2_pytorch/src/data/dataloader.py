@@ -25,7 +25,4 @@ class DataLoader(data.DataLoader):
 def default_collate_fn(items):
     '''default collate_fn
     '''    
-    # if each x[0] is [T, C, H, W] or [C, H, W], stacking adds batch dim
-    batch_data = torch.stack([x[0] for x in items], dim=0)
-    batch_targets = [x[1] for x in items]
-    return batch_data, batch_targets
+    return torch.cat([x[0][None] for x in items], dim=0), [x[1] for x in items]

@@ -475,10 +475,8 @@ class RTDETRTransformer(nn.Module):
                            denoising_bbox_unact=None):
         bs, _, _ = memory.shape
         # prepare input for decoder
-        if self.training or self.eval_spatial_size is None:
-            anchors, valid_mask = self._generate_anchors(spatial_shapes, device=memory.device)
-        else:
-            anchors, valid_mask = self.anchors.to(memory.device), self.valid_mask.to(memory.device)
+        # Always generate anchors and valid_mask dynamically to match feature map size
+        anchors, valid_mask = self._generate_anchors(spatial_shapes, device=memory.device)
 
         # memory = torch.where(valid_mask, memory, 0)
         memory = valid_mask.to(memory.dtype) * memory  # TODO fix type error for onnx export 

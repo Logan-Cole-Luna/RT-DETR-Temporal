@@ -14,11 +14,7 @@ from typing import Iterable
 import torch
 import torch.amp 
 
-try:
-    from src.data.coco.coco_eval import CocoEvaluator
-except ImportError:
-    CocoEvaluator = None
-
+from src.data import CocoEvaluator
 from src.misc import (MetricLogger, SmoothedValue, reduce_dict)
 
 
@@ -104,11 +100,7 @@ def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessors,
 
     # iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessors.keys())
     iou_types = postprocessors.iou_types
-    
-    coco_evaluator = None
-    if CocoEvaluator and base_ds is not None:
-        coco_evaluator = CocoEvaluator(base_ds, iou_types)
-
+    coco_evaluator = CocoEvaluator(base_ds, iou_types)
     # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
 
     panoptic_evaluator = None

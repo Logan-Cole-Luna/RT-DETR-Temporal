@@ -213,6 +213,13 @@ class PResNet(nn.Module):
         return m
 
     def forward(self, x):
+        # ensure float input for convolution
+        if x.dtype != torch.float32:
+            x = x.to(torch.float32)
+        # slice extra channels if present
+        expected_ch = self.conv1[0].conv.in_channels
+        if x.size(1) > expected_ch:
+            x = x[:, :expected_ch, ...]
         conv1 = self.conv1(x)
         x = F.max_pool2d(conv1, kernel_size=3, stride=2, padding=1)
         outs = []

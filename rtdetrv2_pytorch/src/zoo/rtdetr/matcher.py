@@ -103,12 +103,6 @@ class HungarianMatcher(nn.Module):
         C = C.view(bs, num_queries, -1).cpu()
 
         sizes = [len(v["boxes"]) for v in targets]
-        # Convert cost matrices to Python lists to avoid NumPy dependency
-        splits = C.split(sizes, -1)
-        indices = []
-        for i, c in enumerate(splits):
-            cost_mat = c[i]  # [num_queries, num_targets]
-            # c is already on CPU
-            indices.append(linear_sum_assignment(cost_mat.tolist()))
+        indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
 
         return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]

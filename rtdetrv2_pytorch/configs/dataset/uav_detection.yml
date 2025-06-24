@@ -1,0 +1,63 @@
+num_workers: 4
+pin_memory: True
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVDataset
+    img_dir: C:/data/processed_anti_uav_v7/
+    label_dir: C:/data/processed_anti_uav_v7/
+    sequence_file: C:/data/processed_anti_uav_v7/sequences/train.txt
+    transforms:
+      type: Compose
+      ops: 
+      #  - {type: RandomDistort}
+      #  - {type: RandomExpand}
+      #  - {type: RandomCrop}
+      #  - {type: RandomHorizontalFlip}
+      #  - {type: Resize, target_size: [512, 640]}
+        - {type: ToPureTensor}
+        - {type: PadToSize, spatial_size: [512, 640], fill: 0}
+  shuffle: True
+  batch_size: 8
+  num_workers: 4
+  pin_memory: True
+  collate_fn: default_collate_fn
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVDataset
+    img_dir: C:/data/processed_anti_uav_v7/
+    label_dir: C:/data/processed_anti_uav_v7/
+    sequence_file: C:/data/processed_anti_uav_v7/sequences/val.txt
+    transforms:
+      type: Compose
+      ops:
+      #  - {type: Resize, target_size: [512, 640]}
+        - {type: ToPureTensor}
+        - {type: PadToSize, spatial_size: [512, 640], fill: 0}
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  pin_memory: True
+  collate_fn: default_collate_fn
+
+test_dataloader:
+  type: DataLoader
+  dataset:
+    type: UAVDataset
+    img_dir: C:/data/processed_anti_uav_v7/
+    label_dir: C:/data/processed_anti_uav_v7/
+    sequence_file: C:/data/processed_anti_uav_v7/sequences/test.txt
+    transforms:
+      type: Compose
+      ops: 
+        - {type: Resize, target_size: [512, 640]}
+        - {type: ToPureTensor}
+        - {type: PadToSize, spatial_size: [512, 640], fill: 0}
+  shuffle: False
+  batch_size: 8
+  num_workers: 4
+  pin_memory: True
+  collate_fn: default_collate_fn

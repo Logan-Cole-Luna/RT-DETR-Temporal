@@ -46,6 +46,8 @@ class CocoEvaluator(object):
             # suppress pycocotools prints
             with open(os.devnull, 'w') as devnull:
                 with contextlib.redirect_stdout(devnull):
+                    if self.coco_gt and hasattr(self.coco_gt, 'dataset') and 'info' not in self.coco_gt.dataset:
+                        self.coco_gt.dataset['info'] = []
                     coco_dt = COCO.loadRes(self.coco_gt, results) if results else COCO()
             coco_eval = self.coco_eval[iou_type]
 
